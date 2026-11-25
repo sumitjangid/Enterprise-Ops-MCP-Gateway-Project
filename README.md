@@ -53,6 +53,33 @@ The sanitizer and audit modules provide:
 - Argument and result truncation
 - PostgreSQL audit-log writes
 
+## Milestone 5 status
+
+The MCP route now exposes read tools for tickets, customers, orders, pending actions,
+and audit entries. Each tool uses bearer-role checks, per-token rate limits, Zod
+validation, PII masking, untrusted-data wrapping, and audit logging.
+
+## Continuation / remaining work
+
+The current code passes `npm test` (38 tests), `npm run lint`, and `npm run build`.
+Before this milestone is considered runtime-validated, continue with:
+
+- Start or connect a PostgreSQL database and run `npm run db:migrate`
+- Run `npm run db:seed`
+- Start the app with `npm run dev`
+- Open MCP Inspector and verify the read tools through HTTP with each bearer role
+- Exercise denied-role calls, rate limiting, audit-log writes, PII masking, and injection
+  heuristics against the running database
+- Fix any issues found during Inspector or database-backed validation
+
+Later project milestones remain to be implemented:
+
+- Milestone 6: write/proposal tools and manager approval flow
+- Milestone 7: dashboard
+- Milestone 8: Vercel deployment
+- Milestone 9: Claude connector testing and scenario scorecard
+- Milestone 10: final customer brief, threat model, demo, and deployment documentation
+
 ## Local development
 
 ```bash

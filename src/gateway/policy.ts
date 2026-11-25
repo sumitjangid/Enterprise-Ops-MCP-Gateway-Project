@@ -1,4 +1,4 @@
-import type { PoolClient } from "pg";
+import type { Pool, PoolClient } from "pg";
 
 import type { Role } from "./auth";
 
@@ -103,7 +103,7 @@ export function getRateLimitWindow(
 }
 
 export async function consumeRateLimit(
-  client: PoolClient,
+  client: Pool | PoolClient,
   tokenLabel: string,
   limit: number,
   now = new Date(),
