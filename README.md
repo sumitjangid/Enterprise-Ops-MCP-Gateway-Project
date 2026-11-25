@@ -42,6 +42,17 @@ The auth and policy module provides:
 
 These modules are implemented and tested but are not yet wired into the MCP route.
 
+## Milestone 4 status
+
+The sanitizer and audit modules provide:
+
+- Untrusted-data wrappers for ticket and customer text
+- Injection and exfiltration heuristics
+- Email and phone masking
+- Recursive secret-field redaction
+- Argument and result truncation
+- PostgreSQL audit-log writes
+
 ## Local development
 
 ```bash
