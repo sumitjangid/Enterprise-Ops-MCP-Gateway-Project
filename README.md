@@ -29,6 +29,19 @@ npm run db:migrate
 npm run db:seed
 ```
 
+## Milestone 3 status
+
+The auth and policy module provides:
+
+- Constant-time bearer-token role mapping
+- Role-to-tool permission checks
+- Refund policy boundaries
+- Separation-of-duties checks
+- 24-hour expiry checks
+- PostgreSQL-backed per-token rate limiting
+
+These modules are implemented and tested but are not yet wired into the MCP route.
+
 ## Local development
 
 ```bash
