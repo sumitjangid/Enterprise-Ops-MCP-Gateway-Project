@@ -40,7 +40,8 @@ The auth and policy module provides:
 - 24-hour expiry checks
 - PostgreSQL-backed per-token rate limiting
 
-These modules are implemented and tested but are not yet wired into the MCP route.
+These modules are implemented, tested, and wired into the read, proposal, and
+manager-decision tools through the shared route guard.
 
 ## Milestone 4 status
 
@@ -61,7 +62,7 @@ validation, PII masking, untrusted-data wrapping, and audit logging.
 
 ## Continuation / remaining work
 
-The current code passes `npm test` (38 tests), `npm run lint`, and `npm run build`.
+The current code passes `npm test` (53 tests), `npm run lint`, and `npm run build`.
 Before this milestone is considered runtime-validated, continue with:
 
 - Start or connect a PostgreSQL database and run `npm run db:migrate`
@@ -72,9 +73,43 @@ Before this milestone is considered runtime-validated, continue with:
   heuristics against the running database
 - Fix any issues found during Inspector or database-backed validation
 
+## Milestone 6 status
+
+The proposal and manager-approval tools are implemented:
+
+- `propose_refund` and `propose_status_change` create 24-hour pending actions and do
+  not change orders or tickets.
+- Managers can approve or reject pending actions. Approval applies only a simulated
+  change to the mock database; refunds track the refunded total, and ticket status
+  changes update the synthetic ticket.
+- Refund limits, remaining order balance, separation of duties, expiry, idempotency,
+  decision reasons, and audit logging are enforced.
+- Proposal and decision reasons are returned as untrusted text.
+- Email addresses and phone numbers in returned free text are masked for non-managers.
+
+Automated tests, lint, and production build pass. **Manual runtime validation in MCP
+Inspector is still required before this milestone is complete or any code is pushed.**
+Run `npm run db:migrate` before restarting the app so an existing database receives
+the new columns. `npm run db:seed` resets the synthetic tables and is optional if you
+want to preserve your current demo records.
+
+Suggested Inspector checks, using the existing bearer header for each role:
+
+1. As `support_agent`, call `propose_refund` with `order_id: "O-5001"`,
+   `amount: 10`, and a reason. Confirm it returns a pending action ID. Then check
+   `get_order` and confirm `refunded_total` has not changed yet.
+2. As `manager`, call `approve_action` with that ID. Confirm it succeeds, then call
+   `get_order` again and verify the simulated `refunded_total` changed.
+3. As `support_agent`, call `propose_status_change` for `T-1001`, changing it to
+   `closed`. Approve it as `manager` and confirm `get_ticket` returns the new status.
+4. Propose another action as `support_agent` and reject it as `manager`. Confirm the
+   action is rejected and its reason is shown as untrusted text.
+5. Confirm `auditor` cannot propose, approve, or reject; confirm an agent cannot
+   approve or reject; try a refund over $500 and an approval by the action's proposer.
+6. Confirm each allowed and denied attempt appears in `get_audit_log`.
+
 Later project milestones remain to be implemented:
 
-- Milestone 6: write/proposal tools and manager approval flow
 - Milestone 7: dashboard
 - Milestone 8: Vercel deployment
 - Milestone 9: Claude connector testing and scenario scorecard

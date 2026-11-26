@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   detectInstructionLikeText,
   maskEmail,
+  maskPiiText,
   maskPhone,
   wrapUntrusted,
 } from "../src/gateway/sanitize";
@@ -50,6 +51,12 @@ describe("PII masking", () => {
 
   it("masks phone numbers while retaining the last four digits", () => {
     expect(maskPhone("+1 (555) 123-4567")).toBe("***-***-4567");
+  });
+
+  it("masks emails and phone numbers embedded in free text", () => {
+    expect(
+      maskPiiText("Contact morgan.lee@example.com at +1 (555) 123-4567."),
+    ).toBe("Contact m***@example.com at ***-***-4567.");
   });
 
   it("handles malformed values without exposing data", () => {

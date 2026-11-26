@@ -69,3 +69,15 @@ export function maskPhone(phone: string): string {
   }
   return `***-***-${digits.slice(-4)}`;
 }
+
+export function maskPiiText(text: string): string {
+  return text
+    .replace(
+      /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
+      (email) => maskEmail(email),
+    )
+    .replace(
+      /(?<!\w)\+?\d(?:[\s().-]*\d){9,14}(?!\w)/g,
+      (phone) => maskPhone(phone),
+    );
+}

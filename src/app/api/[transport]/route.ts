@@ -15,6 +15,12 @@ import {
   whoami,
   withReadGuard,
 } from "../../../gateway/tools/read";
+import {
+  approveAction,
+  proposeRefund,
+  proposeStatusChange,
+  rejectAction,
+} from "../../../gateway/tools/write";
 
 const ticketIdSchema = z
   .string()
@@ -28,6 +34,21 @@ const orderIdSchema = z
   .string()
   .regex(/^O-\d{1,6}$/)
   .describe("Order ID, for example O-5003");
+const actionIdSchema = z
+  .string()
+  .max(38)
+  .regex(/^A-[A-Za-z0-9-]{1,36}$/)
+  .describe("Pending action ID");
+const reasonSchema = z.string().trim().min(1).max(500);
+const refundAmountSchema = z
+  .number()
+  .finite()
+  .positive()
+  .max(100_000_000)
+  .refine(
+    (amount) => Math.abs(amount * 100 - Math.round(amount * 100)) < 1e-8,
+    "Refund amount must be in increments of one cent.",
+  );
 
 const handler = createMcpHandler((server) => {
   server.registerTool(
@@ -128,6 +149,102 @@ const handler = createMcpHandler((server) => {
       return withReadGuard(db, identity, "get_order", args, () => {
         if (!identity) throw new Error("Authentication required");
         return getOrder(db, identity, args.id);
+      });
+    },
+  );
+
+  server.registerTool(
+    "propose_refund",
+    {
+      title: "Propose Refund",
+      description:
+        "Create a refund proposal for manager approval; this does not execute a refund.",
+      inputSchema: z.object({
+        order_id: orderIdSchema,
+        amount: refundAmountSchema,
+        reason: reasonSchema,
+      }),
+    },
+    async (args) => {
+      const identity = getRequestIdentity();
+      return withReadGuard(db, identity, "propose_refund", args, () => {
+        if (!identity) throw new Error("Authentication required");
+        return proposeRefund(
+          db,
+          identity,
+          args.order_id,
+          args.amount,
+          args.reason,
+        );
+      });
+    },
+  );
+
+  server.registerTool(
+    "propose_status_change",
+    {
+      title: "Propose Ticket Status Change",
+      description:
+        "Create a ticket status-change proposal for manager approval.",
+      inputSchema: z.object({
+        ticket_id: ticketIdSchema,
+        new_status: z.enum(["open", "closed"]),
+        reason: reasonSchema,
+      }),
+    },
+    async (args) => {
+      const identity = getRequestIdentity();
+      return withReadGuard(
+        db,
+        identity,
+        "propose_status_change",
+        args,
+        () => {
+          if (!identity) throw new Error("Authentication required");
+          return proposeStatusChange(
+            db,
+            identity,
+            args.ticket_id,
+            args.new_status,
+            args.reason,
+          );
+        },
+      );
+    },
+  );
+
+  server.registerTool(
+    "approve_action",
+    {
+      title: "Approve Pending Action",
+      description:
+        "Approve a pending proposal and apply its simulated change. Managers only.",
+      inputSchema: z.object({ action_id: actionIdSchema }),
+    },
+    async (args) => {
+      const identity = getRequestIdentity();
+      return withReadGuard(db, identity, "approve_action", args, () => {
+        if (!identity) throw new Error("Authentication required");
+        return approveAction(db, identity, args.action_id);
+      });
+    },
+  );
+
+  server.registerTool(
+    "reject_action",
+    {
+      title: "Reject Pending Action",
+      description: "Reject a pending proposal. Managers only.",
+      inputSchema: z.object({
+        action_id: actionIdSchema,
+        reason: reasonSchema,
+      }),
+    },
+    async (args) => {
+      const identity = getRequestIdentity();
+      return withReadGuard(db, identity, "reject_action", args, () => {
+        if (!identity) throw new Error("Authentication required");
+        return rejectAction(db, identity, args.action_id, args.reason);
       });
     },
   );

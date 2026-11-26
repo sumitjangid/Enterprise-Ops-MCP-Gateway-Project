@@ -27,6 +27,7 @@ describe("synthetic seed data", () => {
     expect(Number(highValueOrder?.total)).toBeGreaterThan(500);
     expect(smithCustomers).toHaveLength(2);
     expect(data.expiredAction.status).toBe("expired");
+    expect(data.expiredAction.requestedBy).toBe("support_agent");
   });
 
   it("is deterministic", () => {

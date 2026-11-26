@@ -10,9 +10,15 @@ CREATE TABLE IF NOT EXISTS orders (
   id text PRIMARY KEY,
   customer_id text NOT NULL REFERENCES customers(id),
   total numeric(12, 2) NOT NULL CHECK (total >= 0),
+  refunded_total numeric(12, 2) NOT NULL DEFAULT 0
+    CHECK (refunded_total >= 0 AND refunded_total <= total),
   status text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE orders
+  ADD COLUMN IF NOT EXISTS refunded_total numeric(12, 2) NOT NULL DEFAULT 0
+  CHECK (refunded_total >= 0 AND refunded_total <= total);
 
 CREATE TABLE IF NOT EXISTS tickets (
   id text PRIMARY KEY,
@@ -33,8 +39,12 @@ CREATE TABLE IF NOT EXISTS pending_actions (
   created_at timestamptz NOT NULL DEFAULT now(),
   decided_by text,
   decided_at timestamptz,
+  decision_reason text,
   expires_at timestamptz NOT NULL
 );
+
+ALTER TABLE pending_actions
+  ADD COLUMN IF NOT EXISTS decision_reason text;
 
 CREATE TABLE IF NOT EXISTS audit_log (
   id text PRIMARY KEY,

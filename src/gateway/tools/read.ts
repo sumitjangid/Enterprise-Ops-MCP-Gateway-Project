@@ -3,9 +3,11 @@ import type { Pool } from "pg";
 import type { Identity } from "../auth";
 import { logCall } from "../audit";
 import { canUseTool, consumeRateLimit, type ToolName } from "../policy";
+import { ToolRequestError } from "./errors";
 import {
   detectInstructionLikeText,
   maskEmail,
+  maskPiiText,
   wrapUntrusted,
 } from "../sanitize";
 
@@ -21,6 +23,16 @@ function textResult(value: unknown): ToolResult {
   };
 }
 
+function auditArguments(tool: ToolName, args: ReadArgs): ReadArgs {
+  if (
+    ["propose_refund", "propose_status_change", "reject_action"].includes(tool) &&
+    typeof args.reason === "string"
+  ) {
+    return { ...args, reason: "[USER-PROVIDED TEXT REDACTED]" };
+  }
+  return args;
+}
+
 export async function withReadGuard(
   client: Pool,
   identity: Identity | null,
@@ -28,12 +40,13 @@ export async function withReadGuard(
   args: ReadArgs,
   handler: () => Promise<unknown>,
 ): Promise<ToolResult> {
+  const safeArgs = auditArguments(tool, args);
   if (!identity) {
     await logCall(client, {
       role: "unknown",
       tokenLabel: "unknown",
       tool,
-      args,
+      args: safeArgs,
       outcome: "denied",
       reason: "Unknown or missing bearer credential",
       resultSummary: "Call denied",
@@ -49,7 +62,7 @@ export async function withReadGuard(
       role: identity.role,
       tokenLabel: identity.tokenLabel,
       tool,
-      args,
+      args: safeArgs,
       outcome: "denied",
       reason: "Role is not permitted to use this tool",
       resultSummary: "Call denied",
@@ -78,7 +91,7 @@ export async function withReadGuard(
         role: identity.role,
         tokenLabel: identity.tokenLabel,
         tool,
-        args,
+        args: safeArgs,
         outcome: "denied",
         reason: "Rate limit exceeded",
         resultSummary: `${limitResult.count} calls exceed limit ${limitResult.limit}`,
@@ -94,23 +107,41 @@ export async function withReadGuard(
       role: identity.role,
       tokenLabel: identity.tokenLabel,
       tool,
-      args,
+      args: safeArgs,
       outcome: "allowed",
       reason: "Tool call permitted",
       resultSummary: "Tool call completed",
     });
     return textResult(result);
   } catch (error) {
-    await logCall(client, {
-      role: identity.role,
-      tokenLabel: identity.tokenLabel,
-      tool,
-      args,
-      outcome: "error",
-      reason: "Tool handler or database call failed",
-      resultSummary:
-        error instanceof Error ? error.message : "Unknown backend error",
-    }).catch(() => undefined);
+    const requestError =
+      error instanceof ToolRequestError ? error : undefined;
+    try {
+      await logCall(client, {
+        role: identity.role,
+        tokenLabel: identity.tokenLabel,
+        tool,
+        args: safeArgs,
+        outcome: requestError ? "denied" : "error",
+        reason: requestError
+          ? requestError.message
+          : "Tool handler or database call failed",
+        resultSummary: requestError
+          ? requestError.publicError
+          : "Backend operation failed",
+      });
+    } catch {
+      return textResult({
+        error: "Service unavailable",
+        detail: "The call could not be audited safely.",
+      });
+    }
+    if (requestError) {
+      return textResult({
+        error: requestError.publicError,
+        detail: requestError.message,
+      });
+    }
     return textResult({
       error: "Service unavailable",
       detail: "The database could not complete this request.",
@@ -129,7 +160,11 @@ export async function whoami(identity: Identity | null): Promise<unknown> {
           "get_customer",
           "list_orders",
           "get_order",
+          "propose_refund",
+          "propose_status_change",
           "list_pending_actions",
+          "approve_action",
+          "reject_action",
           ...(identity.role === "manager" || identity.role === "auditor"
             ? ["get_audit_log"]
             : []),
@@ -164,7 +199,15 @@ export async function searchTickets(
      LIMIT $2`,
     parameters,
   );
-  return { tickets: result.rows };
+  return {
+    tickets: result.rows.map((ticket) => ({
+      ...ticket,
+      subject:
+        identity.role === "manager"
+          ? ticket.subject
+          : maskPiiText(ticket.subject),
+    })),
+  };
 }
 
 export async function getTicket(
@@ -198,7 +241,10 @@ export async function getTicket(
   void identity;
   return {
     ...record,
-    body: wrapUntrusted("body", record.body),
+    body: wrapUntrusted(
+      "body",
+      identity.role === "manager" ? record.body : maskPiiText(record.body),
+    ),
     instructionLikeText: detection,
   };
 }
@@ -236,7 +282,12 @@ export async function getCustomer(
         ? customer.email
         : maskEmail(customer.email),
     tier: customer.tier,
-    notes: wrapUntrusted("notes", customer.notes),
+    notes: wrapUntrusted(
+      "notes",
+      identity.role === "manager"
+        ? customer.notes
+        : maskPiiText(customer.notes),
+    ),
     instructionLikeText: detectInstructionLikeText(customer.notes),
   };
 }
@@ -248,7 +299,7 @@ export async function listOrders(
   limit = 20,
 ): Promise<unknown> {
   const result = await client.query(
-    `SELECT id, customer_id, total, status, created_at
+    `SELECT id, customer_id, total, refunded_total, status, created_at
      FROM orders
      WHERE customer_id = $1
      ORDER BY created_at DESC
@@ -264,7 +315,7 @@ export async function getOrder(
   id: string,
 ): Promise<unknown> {
   const result = await client.query(
-    `SELECT id, customer_id, total, status, created_at
+    `SELECT id, customer_id, total, refunded_total, status, created_at
      FROM orders WHERE id = $1`,
     [id],
   );
@@ -285,7 +336,8 @@ export async function listPendingActions(
   const result =
     identity.role === "support_agent"
       ? await client.query(
-          `SELECT id, type, payload, requested_by, status, created_at, expires_at
+          `SELECT id, type, payload, requested_by, status, created_at,
+                  expires_at, decision_reason
            FROM pending_actions
            WHERE requested_by = $1
            ORDER BY created_at DESC
@@ -293,12 +345,47 @@ export async function listPendingActions(
           [identity.tokenLabel],
         )
       : await client.query(
-          `SELECT id, type, payload, requested_by, status, created_at, expires_at
+          `SELECT id, type, payload, requested_by, status, created_at,
+                  expires_at, decision_reason
            FROM pending_actions
            ORDER BY created_at DESC
            LIMIT 50`,
         );
-  return { pendingActions: result.rows };
+  return {
+    pendingActions: result.rows.map((action) => {
+      const payload =
+        action.payload && typeof action.payload === "object"
+          ? { ...(action.payload as Record<string, unknown>) }
+          : action.payload;
+      if (payload && typeof payload === "object") {
+        const reason = payload.reason;
+        if (typeof reason === "string") {
+          const safeReason =
+            identity.role === "manager" ? reason : maskPiiText(reason);
+          payload.reason = wrapUntrusted("reason", safeReason);
+          payload.reasonInstructionLikeText = detectInstructionLikeText(reason);
+        }
+      }
+      return {
+        ...action,
+        payload,
+        decision_reason:
+          typeof action.decision_reason === "string"
+            ? {
+                ...wrapUntrusted(
+                  "decision_reason",
+                  identity.role === "manager"
+                    ? action.decision_reason
+                    : maskPiiText(action.decision_reason),
+                ),
+                instructionLikeText: detectInstructionLikeText(
+                  action.decision_reason,
+                ),
+              }
+            : action.decision_reason,
+      };
+    }),
+  };
 }
 
 export async function getAuditLog(

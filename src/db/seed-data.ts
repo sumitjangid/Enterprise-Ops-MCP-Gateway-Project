@@ -28,7 +28,7 @@ export type ExpiredActionSeed = {
   id: string;
   type: "refund";
   payload: { orderId: string; amount: number; reason: string };
-  requestedBy: "support-agent";
+  requestedBy: "support_agent";
   status: "expired";
   createdAt: string;
   expiresAt: string;
@@ -125,7 +125,7 @@ export function createSeedData() {
       amount: 25,
       reason: "Expired seed action",
     },
-    requestedBy: "support-agent",
+    requestedBy: "support_agent",
     status: "expired",
     createdAt: "2026-11-20T09:00:00Z",
     expiresAt: "2026-11-21T09:00:00Z",
