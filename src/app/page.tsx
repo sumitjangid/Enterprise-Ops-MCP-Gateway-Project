@@ -8,6 +8,12 @@ export default function Home() {
       <p className="mt-4 max-w-xl text-lg text-zinc-600">
         Connect to <code>/api/mcp</code> and call the <code>whoami</code> tool.
       </p>
+      <a
+        href="/dashboard"
+        className="mt-6 w-fit rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white"
+      >
+        Open manager dashboard
+      </a>
     </main>
   );
 }
