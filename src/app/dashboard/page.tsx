@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { cookies } from "next/headers";
+import Link from "next/link";
 import { connection } from "next/server";
 import { z } from "zod";
 
@@ -43,6 +44,22 @@ function formatDate(value: unknown): string {
   if (!value) return "-";
   const date = new Date(String(value));
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
+}
+
+function statusClass(value: unknown): string {
+  switch (value) {
+    case "pending":
+    case "approved":
+    case "rejected":
+    case "expired":
+      return `status-chip status-${value}`;
+    case "allowed":
+    case "denied":
+    case "error":
+      return `outcome-chip outcome-${value}`;
+    default:
+      return "status-chip";
+  }
 }
 
 async function loadDashboard(searchParams: {
@@ -127,7 +144,7 @@ export default function Dashboard(props: DashboardProps) {
   return (
     <Suspense
       fallback={
-        <main className="mx-auto min-h-screen max-w-7xl px-6 py-8">
+        <main className="loading-page">
           Loading dashboard...
         </main>
       }
@@ -145,14 +162,19 @@ async function DashboardContent({ searchParams }: DashboardProps) {
   );
   if (!identity) {
     return (
-      <main className="mx-auto flex min-h-screen max-w-md items-center px-6">
-        <section className="w-full rounded-2xl border border-zinc-200 bg-white p-7 shadow-sm">
-          <p className="text-sm font-semibold uppercase tracking-widest text-emerald-700">
-            Manager access
-          </p>
-          <h1 className="mt-2 text-2xl font-semibold">Dashboard login</h1>
-          <p className="mt-2 text-sm text-zinc-600">
-            Enter the configured manager bearer token. This demo session is HTTP-only.
+      <main className="login-page">
+        <section className="login-card">
+          <Link className="brand-lockup" href="/" aria-label="Gateway home">
+            <span className="brand-mark" aria-hidden="true">
+              E
+            </span>
+            <span className="brand-name">ENTERPRISE OPS / GATEWAY</span>
+          </Link>
+          <p className="section-label login-eyebrow">Manager access</p>
+          <h1 className="login-heading">Sign in to operations</h1>
+          <p className="login-description">
+            Enter your manager token to review pending proposals and audit
+            activity. Your session is protected by an HTTP-only cookie.
           </p>
           <LoginForm />
         </section>
@@ -174,12 +196,13 @@ async function DashboardContent({ searchParams }: DashboardProps) {
     data = await loadDashboard(params);
   } catch {
     return (
-      <main className="mx-auto min-h-screen max-w-6xl px-6 py-10">
-        <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-red-800">
-          Demo data unavailable. Run the database migration and seed scripts.
+      <main className="dashboard-page">
+        <div className="database-error" role="alert">
+          Demo data is unavailable. Check the database connection and ensure
+          the schema migration has completed.
         </div>
-        <form action={logout}>
-          <button className="rounded-lg border px-3 py-2 text-sm" type="submit">
+        <form action={logout} className="signout-form">
+          <button className="signout-button" type="submit">
             Sign out
           </button>
         </form>
@@ -188,145 +211,170 @@ async function DashboardContent({ searchParams }: DashboardProps) {
   }
 
   return (
-    <main className="mx-auto min-h-screen max-w-7xl px-6 py-8">
-      <div className="mb-6 flex items-start justify-between gap-4">
+    <main className="dashboard-page">
+      <header className="dashboard-header">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-widest text-emerald-700">
-            Demo data only
+          <Link className="brand-lockup" href="/" aria-label="Gateway home">
+            <span className="brand-mark" aria-hidden="true">
+              E
+            </span>
+            <span className="brand-name">ENTERPRISE OPS / GATEWAY</span>
+          </Link>
+          <h1 className="dashboard-title">Operations dashboard</h1>
+          <p className="dashboard-subtitle">
+            Review proposed changes and monitor gateway activity.
           </p>
-          <h1 className="mt-1 text-3xl font-semibold">Operations dashboard</h1>
         </div>
-        <form action={logout}>
-          <button
-            type="submit"
-            className="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-semibold"
-          >
-            Sign out
-          </button>
-        </form>
-      </div>
+        <div className="dashboard-header-actions">
+          <span className="demo-badge">Synthetic demo data</span>
+          <form action={logout} className="signout-form">
+            <button type="submit" className="signout-button">
+              Sign out
+            </button>
+          </form>
+        </div>
+      </header>
 
       {notice ? (
         <p
           role="status"
-          className="mb-6 rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-800"
+          className={`notice ${
+            params.result === "error" ? "notice-error" : "notice-success"
+          }`}
         >
           {notice}
         </p>
       ) : null}
 
-      <section className="grid gap-4 sm:grid-cols-3">
+      <section className="metric-grid" aria-label="Daily gateway metrics">
         {[
-          ["Calls today", data.counters.callsToday],
-          ["Denials today", data.counters.denialsToday],
-          ["Flagged injections", data.counters.flaggedInjections],
-        ].map(([label, value]) => (
-          <div key={String(label)} className="rounded-xl border border-zinc-200 p-5">
-            <p className="text-sm text-zinc-600">{label}</p>
-            <p className="mt-1 text-3xl font-semibold">{value}</p>
-          </div>
+          {
+            label: "Calls today",
+            value: data.counters.callsToday,
+            className: "",
+          },
+          {
+            label: "Denied calls",
+            value: data.counters.denialsToday,
+            className: "metric-warning",
+          },
+          {
+            label: "Flagged text records",
+            value: data.counters.flaggedInjections,
+            className: "metric-danger",
+          },
+        ].map(({ label, value, className }) => (
+          <article className={`metric-card ${className}`} key={label}>
+            <p className="metric-label">{label}</p>
+            <p className="metric-value">{value}</p>
+          </article>
         ))}
       </section>
 
-      <section className="mt-8">
-        <h2 className="text-xl font-semibold">Pending actions</h2>
-        <div className="mt-3 overflow-hidden rounded-xl border border-zinc-200">
+      <section className="dashboard-section">
+        <div className="section-heading-row">
+          <h2 className="section-heading">Action requests</h2>
+          <span className="count-badge">{data.pending.length}</span>
+        </div>
+        <div className="action-list">
           {data.pending.length === 0 ? (
-            <p className="p-5 text-sm text-zinc-600">No pending actions.</p>
+            <p className="empty-state">No pending actions to review.</p>
           ) : (
-            <div className="divide-y divide-zinc-200">
-              {data.pending.map((action) => {
-                const payload =
-                  action.payload && typeof action.payload === "object"
-                    ? (action.payload as Record<string, unknown>)
-                    : {};
-                const reason =
-                  typeof payload.reason === "string"
-                    ? wrapUntrusted("reason", payload.reason)
-                    : null;
-                const active = action.status === "pending";
-                return (
-                  <article key={text(action.id)} className="p-5">
-                    <div className="flex flex-wrap items-start justify-between gap-4">
-                      <div>
-                        <p className="font-mono text-sm">{text(action.id)}</p>
-                        <p className="mt-1 text-sm text-zinc-700">
-                          {text(action.type)} · {text(action.status)} · proposed by{" "}
-                          {text(action.requested_by)}
-                        </p>
-                        <p className="mt-2 text-sm">
-                          Expires {formatDate(action.expires_at)}
-                        </p>
-                        {reason ? (
-                          <p className="mt-2 max-w-3xl text-sm text-zinc-600">
-                            {text(reason.content)}
-                            {typeof payload.reason === "string" &&
-                            detectInstructionLikeText(payload.reason).flagged
-                              ? " · instruction-like text"
-                              : ""}
-                          </p>
-                        ) : null}
-                        {typeof payload.amount === "number" ? (
-                          <p className="mt-1 text-sm">
-                            Refund amount: ${Number(payload.amount).toFixed(2)}
-                          </p>
-                        ) : null}
-                        {typeof payload.ticketId === "string" ? (
-                          <p className="mt-1 text-sm">
-                            Ticket {payload.ticketId}: {text(payload.previousStatus)} →{" "}
-                            {text(payload.newStatus)}
-                          </p>
-                        ) : null}
-                      </div>
-                      {active ? (
-                        <div className="flex flex-col gap-2">
-                          <form action={approveDashboardAction.bind(null, text(action.id))}>
-                            <button
-                              type="submit"
-                              className="w-28 rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold text-white"
-                            >
-                              Approve
-                            </button>
-                          </form>
-                          <form
-                            action={rejectDashboardAction.bind(
-                              null,
-                              text(action.id),
-                            )}
-                            className="flex gap-2"
-                          >
-                            <input
-                              name="reason"
-                              required
-                              maxLength={500}
-                              placeholder="Rejection reason"
-                              className="w-44 rounded-lg border border-zinc-300 px-2 py-2 text-sm"
-                            />
-                            <button
-                              type="submit"
-                              className="rounded-lg border border-red-300 px-3 py-2 text-sm font-semibold text-red-700"
-                            >
-                              Reject
-                            </button>
-                          </form>
-                        </div>
-                      ) : null}
+            data.pending.map((action) => {
+              const payload =
+                action.payload && typeof action.payload === "object"
+                  ? (action.payload as Record<string, unknown>)
+                  : {};
+              const reason =
+                typeof payload.reason === "string"
+                  ? wrapUntrusted("reason", payload.reason)
+                  : null;
+              const active = action.status === "pending";
+              return (
+                <article className="action-card" key={text(action.id)}>
+                  <div className="action-content">
+                    <div className="action-title-row">
+                      <span className="action-id">{text(action.id)}</span>
+                      <span className={statusClass(action.status)}>
+                        {text(action.status)}
+                      </span>
                     </div>
-                  </article>
-                );
-              })}
-            </div>
+                    <div className="action-meta">
+                      <span>{text(action.type)}</span>
+                      <span aria-hidden="true">·</span>
+                      <span>Proposed by {text(action.requested_by)}</span>
+                      <span aria-hidden="true">·</span>
+                      <span>Expires {formatDate(action.expires_at)}</span>
+                    </div>
+                    {reason ? (
+                      <p className="action-reason">
+                        {text(reason.content)}
+                        {typeof payload.reason === "string" &&
+                        detectInstructionLikeText(payload.reason).flagged
+                          ? " · instruction-like text"
+                          : ""}
+                      </p>
+                    ) : null}
+                    {typeof payload.amount === "number" ? (
+                      <p className="action-detail">
+                        Refund amount: ${Number(payload.amount).toFixed(2)}
+                      </p>
+                    ) : null}
+                    {typeof payload.ticketId === "string" ? (
+                      <p className="action-detail">
+                        Ticket {payload.ticketId}: {text(payload.previousStatus)} →{" "}
+                        {text(payload.newStatus)}
+                      </p>
+                    ) : null}
+                  </div>
+                  {active ? (
+                    <div className="action-controls">
+                      <form action={approveDashboardAction.bind(null, text(action.id))}>
+                        <button type="submit" className="approve-button">
+                          Approve proposal
+                        </button>
+                      </form>
+                      <form
+                        action={rejectDashboardAction.bind(null, text(action.id))}
+                        className="reject-form"
+                      >
+                        <input
+                          name="reason"
+                          required
+                          maxLength={500}
+                          placeholder="Reason for rejection"
+                          aria-label="Reason for rejection"
+                          className="text-field"
+                        />
+                        <button type="submit" className="reject-button">
+                          Reject
+                        </button>
+                      </form>
+                    </div>
+                  ) : null}
+                </article>
+              );
+            })
           )}
         </div>
       </section>
 
-      <section className="mt-8">
-        <h2 className="text-xl font-semibold">Audit log</h2>
-        <form className="mt-3 flex flex-wrap gap-2" method="get">
+      <section className="dashboard-section">
+        <div className="section-heading-row">
+          <div>
+            <h2 className="section-heading">Audit log</h2>
+            <p className="muted-copy">
+              Recent tool activity, including denied requests.
+            </p>
+          </div>
+          <span className="count-badge">{data.audit.length}</span>
+        </div>
+        <form className="audit-filters" method="get">
           <select
             name="role"
             defaultValue={data.filters.role ?? ""}
-            className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+            className="filter-select"
+            aria-label="Filter by role"
           >
             <option value="">All roles</option>
             <option value="support_agent">Support agent</option>
@@ -338,50 +386,58 @@ async function DashboardContent({ searchParams }: DashboardProps) {
             defaultValue={data.filters.tool ?? ""}
             maxLength={64}
             placeholder="Tool name"
-            className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+            className="filter-input"
+            aria-label="Filter by tool name"
           />
           <select
             name="outcome"
             defaultValue={data.filters.outcome ?? ""}
-            className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+            className="filter-select"
+            aria-label="Filter by outcome"
           >
             <option value="">All outcomes</option>
             <option value="allowed">Allowed</option>
             <option value="denied">Denied</option>
             <option value="error">Error</option>
           </select>
-          <button
-            type="submit"
-            className="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-semibold text-white"
-          >
+          <button type="submit" className="filter-button">
             Filter
           </button>
         </form>
-        <div className="mt-3 overflow-x-auto rounded-xl border border-zinc-200">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-zinc-50 text-zinc-600">
-              <tr>
-                <th className="px-4 py-3">Time</th>
-                <th className="px-4 py-3">Role</th>
-                <th className="px-4 py-3">Tool</th>
-                <th className="px-4 py-3">Outcome</th>
-                <th className="px-4 py-3">Summary</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-200">
-              {data.audit.map((entry) => (
-                <tr key={text(entry.id)}>
-                  <td className="whitespace-nowrap px-4 py-3">
-                    {formatDate(entry.ts)}
-                  </td>
-                  <td className="px-4 py-3">{text(entry.role)}</td>
-                  <td className="px-4 py-3 font-mono">{text(entry.tool)}</td>
-                  <td className="px-4 py-3">{text(entry.outcome)}</td>
-                  <td className="max-w-lg px-4 py-3">{text(entry.result_summary)}</td>
+        <div className="audit-panel">
+          <div className="audit-table-wrap">
+            <table className="audit-table">
+              <thead>
+                <tr>
+                  <th scope="col">Time</th>
+                  <th scope="col">Role</th>
+                  <th scope="col">Tool</th>
+                  <th scope="col">Outcome</th>
+                  <th scope="col">Summary</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {data.audit.map((entry) => (
+                  <tr key={text(entry.id)}>
+                    <td className="audit-time">{formatDate(entry.ts)}</td>
+                    <td>{text(entry.role)}</td>
+                    <td className="audit-tool">{text(entry.tool)}</td>
+                    <td>
+                      <span className={statusClass(entry.outcome)}>
+                        {text(entry.outcome)}
+                      </span>
+                    </td>
+                    <td className="audit-summary">
+                      {text(entry.result_summary)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {data.audit.length === 0 ? (
+              <p className="empty-state">No audit entries match these filters.</p>
+            ) : null}
+          </div>
         </div>
       </section>
     </main>

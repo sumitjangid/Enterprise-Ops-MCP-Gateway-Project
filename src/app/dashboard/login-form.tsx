@@ -8,8 +8,8 @@ export function LoginForm() {
   const [state, action, pending] = useActionState(login, undefined);
 
   return (
-    <form action={action} className="mt-6 space-y-4">
-      <label className="block text-sm font-medium" htmlFor="token">
+    <form action={action} className="login-form">
+      <label className="field-label" htmlFor="token">
         Manager token
       </label>
       <input
@@ -19,17 +19,17 @@ export function LoginForm() {
         autoComplete="current-password"
         required
         maxLength={512}
-        className="w-full rounded-lg border border-zinc-300 px-3 py-2"
+        className="login-input"
       />
       {state?.error ? (
-        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+        <p className="login-error" role="alert">
           {state.error}
         </p>
       ) : null}
       <button
         type="submit"
         disabled={pending}
-        className="w-full rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+        className="login-submit"
       >
         {pending ? "Signing in..." : "Sign in"}
       </button>
