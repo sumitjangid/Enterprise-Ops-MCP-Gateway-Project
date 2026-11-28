@@ -54,7 +54,7 @@ export default function Home() {
             <Link className="button-primary" href="/dashboard">
               Open manager dashboard <span aria-hidden="true">→</span>
             </Link>
-            <a className="button-secondary" href="#connect">
+            <a className="button-secondary" target="_blank" href="https://mcp-inspector-demo.vercel.app/">
               Connect an MCP client
             </a>
           </div>
